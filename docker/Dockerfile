@@ -52,12 +52,13 @@ RUN echo "export PATH=/home/${USERNAME}/.vscode-server/bin/default_version/bin/r
 RUN /home/${USERNAME}/miniforge3/bin/mamba install -y opencv
 
 USER root
+
+# For opencv
 RUN apt-get install -y sudo ffmpeg libsm6 libxext6
 RUN usermod -aG video ${USERNAME}
 
 USER ${USERNAME}
 
-RUN /home/${USERNAME}/miniforge3/bin/pip install threadpoolctl
 RUN code-server --install-extension ms-python.black-formatter
 
 SHELL ["/bin/zsh", "-ec"]
