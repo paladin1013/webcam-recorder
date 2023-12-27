@@ -33,10 +33,8 @@ def gen_frames():
                 img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = av.VideoFrame.from_ndarray(img, format="rgb24")
                 # Encode and write the frame
-                print("gen_frames: writing frame")
                 for packet in stream.encode(img):
                     container.mux(packet)
-                print("gen_frames: done writing frame")
 
             ret, buffer = cv2.imencode(".jpg", frame)
             frame = buffer.tobytes()
@@ -70,14 +68,12 @@ def start_recording():
 def stop_recording():
     global recording, stream, container
     recording = False
-    # Finalize the video file
+    # Wait until the video frames are written
     time.sleep(0.1)
     # Finalize the video file
-    print("stop_recording: finalizing video file")
     for packet in stream.encode():
         container.mux(packet)
     container.close()
-    print("stop_recording: done finalizing video file")
     return redirect(url_for("index"))
 
 
