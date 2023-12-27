@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Webcam Stream</title>
+</head>
+
+<body>
+    <h1>Camera Stream</h1>
+    <img src="{{ url_for('video_feed') }}">
+    <form action="/start_recording" method="post">
+        <input type="submit" value="Start Recording">
+    </form>
+    <form action="/stop_recording" method="post">
+        <input type="submit" value="Stop Recording">
+    </form>
+    <a href="/video">Download Video</a>
+</body>
+
+</html>
