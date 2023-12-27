@@ -1,0 +1,24 @@
+{
+    "name": "camera-recorder",
+    "dockerFile": "${localWorkspaceFolder}/docker/Dockerfile",
+    "runArgs": [
+      "--volume=/tmp/.X11-unix/:/tmp/.X11-unix/", // For GUI display
+      "--device=/dev/video0:/dev/video0", // For camera
+    ],
+    "remoteEnv": {
+      "DISPLAY": ":0" // Use the default display connected to the host machine
+      // "DISPLAY": "${localEnv:DISPLAY}"
+      // If you are using MacOS, please first check the correct display using ps aux | grep Xquartz
+      // The port (currently 40, may vary) comes from the line `/opt/X11/bin/Xquartz :40 -listen tcp`
+      // If getting `Authorization required, but no authorization protocol specified` error, please run `xhost +` in your host machine
+      // "DISPLAY": "host.docker.internal:40"
+    },
+    "workspaceMount": "source=${localWorkspaceFolder},target=/home/recorder/${localWorkspaceFolderBasename},type=bind",
+    "workspaceFolder": "/home/recorder/${localWorkspaceFolderBasename}", // Only for aliengo development
+    "mounts": [
+      // If you have never used zsh, you can bind .bash_history in your host machine to .zsh_history in the container
+      // "source=${localEnv:HOME}${localEnv:USERPROFILE}/.bash_history,target=/home/recorder/.zsh_history,type=bind",
+      // and comment the following line
+      "source=${localEnv:HOME}${localEnv:USERPROFILE}/.zsh_history,target=/home/recorder/.zsh_history,type=bind",
+    ],
+  }
