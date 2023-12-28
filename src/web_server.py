@@ -24,7 +24,7 @@ class WebServer:
         self.recording = False
         self.stream = None
         self.container = None
-        self.recordings_dir = "./recordings"
+        self.recordings_dir = "./recordings/videos"
 
     def setup_camera(self):
         self.cap.open(0)
