@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Webcam and Video Stream</title>
+    <script>
+        function reportTime() {
+            var video = document.getElementById('videoPlayer');
+            var time = video.currentTime;
+
+            fetch('/progress', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ time: time }),
+            });
+        }
+
+        function setupVideo() {
+            var video = document.getElementById('videoPlayer');
+            if (video) {
+                video.ontimeupdate = reportTime;
+            }
+        }
+
+        window.onload = setupVideo;
+    </script>
+</head>
+
+<body>
+    <h1>Camera Stream</h1>
+    <img src="{{ url_for('video_feed') }}" alt="Webcam Stream">
+    <form action="/start_recording" method="post">
+        <input type="submit" value="Start Recording">
+    </form>
+    <form action="/stop_recording" method="post">
+        <input type="submit" value="Stop Recording">
+    </form>
+    <a href="/video_replay">Download Video</a>
+
+    <h2>Recorded Video</h2>
+    <video id="videoPlayer" controls>
+        <source src="/video_replay" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+</body>
+
+</html>

@@ -9,8 +9,6 @@ from quart import (
     send_from_directory,
 )
 import cv2
-import threading
-import os
 import av
 
 app = Quart(__name__)
