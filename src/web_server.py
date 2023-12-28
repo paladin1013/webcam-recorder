@@ -36,13 +36,15 @@ class WebServer:
         self.app.route("/video_feed")(self.video_feed)
         self.app.route("/start_recording", methods=["POST"])(self.start_recording)
         self.app.route("/stop_recording", methods=["POST"])(self.stop_recording)
-        self.app.route("/video_replay")(self.video_replay)
+        # self.app.route("/video_replay")(self.video_replay)
         self.app.route("/progress", methods=["POST"])(self.progress)
+
+        self.app.route("/recordings/<filename>")(self.serve_recording)
 
     def generate_output_filename(self):
         # Generate a unique file name using the current timestamp
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        return f"{self.recordings_dir}/recorded_{timestamp}.mp4"
+        return f"{self.recordings_dir}/{timestamp}.mp4"
 
     async def gen_frames(self):
         while True:
@@ -59,17 +61,20 @@ class WebServer:
 
                 ret, buffer = cv2.imencode(".jpg", frame)
                 frame = buffer.tobytes()
-                print(
-                    f"Recording: {self.recording}, single frame fps: {1/(time.monotonic() - start_time):.1f}",
-                    end="\r",
-                )
+                # print(
+                #     f"Recording: {self.recording}, single frame fps: {1/(time.monotonic() - start_time):.1f}",
+                #     end="\r",
+                # )
                 yield (
                     b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
             await asyncio.sleep(0)
 
     async def index(self):
-        return await render_template("index.html")
+        os.makedirs(self.recordings_dir, exist_ok=True)
+        recording_files = os.listdir(self.recordings_dir)
+        recording_files.sort(reverse=True)
+        return await render_template("index.html", video_files=recording_files)
 
     def video_feed(self):
         return Response(
@@ -101,19 +106,9 @@ class WebServer:
         self.container.close()
         return redirect(url_for("index"))
 
-    async def video_replay(self):
-        # Get the latest video recording file name in ./recordings/
-        os.makedirs(self.recordings_dir, exist_ok=True)
-        recording_files = os.listdir(self.recordings_dir)
-        while not recording_files:
-            await asyncio.sleep(0.1)
-
-        recording_files.sort()
-        print(f"All video files: {recording_files}")
-        print(f"Showing video file: {recording_files[-1]}")
-
+    async def serve_recording(self, filename):
         return await send_from_directory(
-            directory=".", file_name=f"{self.recordings_dir}/{recording_files[-1]}"
+            directory=self.recordings_dir, file_name=filename
         )
 
     async def progress(self):

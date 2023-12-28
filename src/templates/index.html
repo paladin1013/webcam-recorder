@@ -4,6 +4,16 @@
 <head>
     <title>Webcam and Video Stream</title>
     <script>
+        function updateVideoPlayer() {
+            var selectedVideo = document.getElementById('videoList').value;
+            var videoPlayer = document.getElementById('videoPlayer');
+            var downloadLink = document.getElementById('downloadLink');
+            var videoURL = '/recordings/' + selectedVideo;
+            videoPlayer.src = videoURL;
+            videoPlayer.load();
+            downloadLink.href = videoURL;
+        }
+
         function reportTime() {
             var video = document.getElementById('videoPlayer');
             var time = video.currentTime;
@@ -24,7 +34,10 @@
             }
         }
 
-        window.onload = setupVideo;
+        window.onload = function () {
+            setupVideo();
+            updateVideoPlayer(); // Set the initial video
+        };
     </script>
 </head>
 
@@ -37,13 +50,21 @@
     <form action="/stop_recording" method="post">
         <input type="submit" value="Stop Recording">
     </form>
-    <a href="/video_replay">Download Video</a>
+
+    <h2>Select a Video</h2>
+    <select id="videoList" onchange="updateVideoPlayer()">
+        {% for video in video_files %}
+        <option value="{{ video }}">{{ video }}</option>
+        {% endfor %}
+    </select>
+    <a id="downloadLink" download>Download Video</a>
 
     <h2>Recorded Video</h2>
     <video id="videoPlayer" controls>
-        <source src="/video_replay" type="video/mp4">
+        <source src="" type="video/mp4">
         Your browser does not support the video tag.
     </video>
+
 </body>
 
 </html>
