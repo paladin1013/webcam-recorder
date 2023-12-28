@@ -62,6 +62,7 @@ USER ${USERNAME}
 RUN code-server --install-extension ms-python.black-formatter
 RUN /home/${USERNAME}/miniforge3/bin/pip install opencv-stubs
 RUN /home/${USERNAME}/miniforge3/bin/mamba install -y av
+RUN /home/${USERNAME}/miniforge3/bin/pip install quart
 
 SHELL ["/bin/zsh", "-ec"]
 CMD ["zsh"]

@@ -1,21 +1,21 @@
-from flask import Flask, render_template, request, jsonify
+from quart import Quart, render_template, request, jsonify
 
-app = Flask(__name__)
+app = Quart(__name__)
 
 
 @app.route("/")
-def index():
-    return render_template("video.html")
+async def index():
+    return await render_template("video.html")
 
 
 @app.route("/video")
-def video():
-    return app.send_static_file("recorded.mp4")
+async def video():
+    return await app.send_static_file("recorded.mp4")
 
 
 @app.route("/progress", methods=["POST"])
-def progress():
-    data = request.json
+async def progress():
+    data = await request.get_json()
     print(f"Current video time: {data['time']} seconds")
     # Process the time data as needed
     return jsonify({"status": "success"})

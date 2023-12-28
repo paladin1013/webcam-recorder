@@ -1,6 +1,7 @@
+import asyncio
 import time
-from flask import (
-    Flask,
+from quart import (
+    Quart,
     Response,
     render_template,
     redirect,
@@ -12,22 +13,26 @@ import threading
 import os
 import av
 
-app = Flask(__name__)
+app = Quart(__name__)
 
 # Global variables
 outputFile = "recorded.mp4"
 cap = cv2.VideoCapture()
+
 cap.open(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 recording = False
 
 
-def gen_frames():
+async def gen_frames():
     global recording, stream, container
     while True:
         success, frame = cap.read()
         if not success:
             break
         else:
+            start_time = time.monotonic()
             if recording:
                 # Convert the frame to PIL Image
                 img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -38,12 +43,15 @@ def gen_frames():
 
             ret, buffer = cv2.imencode(".jpg", frame)
             frame = buffer.tobytes()
+            end_time = time.monotonic()
+            print(f"Single frame fps: {1/(end_time - start_time):.1f}", end="\r")
             yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+        await asyncio.sleep(0)
 
 
 @app.route("/")
-def index():
-    return render_template("index.html")
+async def index():
+    return await render_template("index.html")
 
 
 @app.route("/video_feed")
@@ -52,20 +60,21 @@ def video_feed():
 
 
 @app.route("/start_recording", methods=["POST"])
-def start_recording():
+async def start_recording():
     global recording, stream, container
     recording = True
     container = av.open(outputFile, mode="w")
     stream = container.add_stream("h264", rate=24)
     stream.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     stream.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"Video resolution: {stream.width}x{stream.height}")
     stream.pix_fmt = "yuv420p"
 
     return redirect(url_for("index"))
 
 
 @app.route("/stop_recording", methods=["POST"])
-def stop_recording():
+async def stop_recording():
     global recording, stream, container
     recording = False
     # Wait until the video frames are written
@@ -78,8 +87,8 @@ def stop_recording():
 
 
 @app.route("/video")
-def video():
-    return send_from_directory(directory=".", path=outputFile)
+async def video():
+    return await send_from_directory(directory=".", file_name=outputFile)
 
 
 if __name__ == "__main__":
