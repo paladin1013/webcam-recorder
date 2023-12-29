@@ -2,12 +2,10 @@ import asyncio
 import os
 import pickle
 import time
+from datetime import datetime
 from typing import List, Tuple
 import zmq.asyncio
-
-
-os.environ["TZ"] = "America/Los_Angeles"
-time.tzset()
+import pytz
 
 
 class TrajRecorder:
@@ -17,6 +15,7 @@ class TrajRecorder:
         server_port: int,
         data_dir: str,
         save_data_interval: float = 1.0,
+        time_zone: str = "America/Los_Angeles",
     ):
         self.server_ip = server_ip
         self.server_port = server_port
@@ -30,6 +29,7 @@ class TrajRecorder:
         self.received_msgs: List[Tuple[float, bytes]] = []
         self.pub_socket = self.context.socket(zmq.PUB)
         self.pub_socket.bind(f"tcp://*:{server_port}")
+        self.time_zone = pytz.timezone(time_zone)
 
     async def run_receive(self):
         start_receive_time = time.monotonic()
@@ -65,7 +65,9 @@ class TrajRecorder:
     async def save_data_periodically(self):
         patch_id = 0
         while True:
-            file_name = f"{time.strftime('%Y%m%d_%H%M%S', time.localtime(self.start_global_time))}"
+            file_name = datetime.fromtimestamp(
+                self.start_global_time, self.time_zone
+            ).strftime("%Y%m%d_%H%M%S")
             saved = self.save_data(file_name)
             if saved:
                 patch_id += 1
@@ -92,4 +94,4 @@ class TrajRecorder:
 if __name__ == "__main__":
     recorder = TrajRecorder("172.24.95.130", 8800, "recordings/trajectories")
     # asyncio.run(recorder.run())
-    asyncio.run(recorder.replay_data("20231228_173347.pkl"))
+    # asyncio.run(recorder.replay_data("20231228_173448.pkl"))
