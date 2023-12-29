@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from typing import Dict, Optional
 import cv2
 import av
 from quart import (
@@ -18,6 +19,8 @@ import os
 import pytz
 from datetime import datetime
 
+from msg_recorder import MsgRecorder
+
 
 def parse_range_header(header, total_size):
     # Parse the range header to get start and end byte positions
@@ -31,7 +34,12 @@ def parse_range_header(header, total_size):
 
 
 class WebServer:
-    def __init__(self, time_zone="America/Los_Angeles", resolution=(640, 480)):
+    def __init__(
+        self,
+        time_zone="America/Los_Angeles",
+        resolution=(640, 480),
+        msg_recorder: Optional[MsgRecorder] = None,
+    ):
         self.app = Quart(__name__)
         self.setup_routes()
         self.cap = cv2.VideoCapture()
@@ -40,7 +48,8 @@ class WebServer:
         self.container = None
         self.recordings_dir = "./recordings/videos"
         self.time_zone = pytz.timezone(time_zone)
-        self.start_time = time.monotonic()
+        self.record_start_time = time.time()
+        self.replay_start_time = time.time()
         self.resolution = resolution
         self.client_ip = ""
 
@@ -48,15 +57,17 @@ class WebServer:
         self.app.after_serving(self.release_camera)
 
         self.app.websocket("/ws")(self.ws)
+        self.msg_recorder = msg_recorder
 
     async def ws(self):
-        cnt = 0
         while True:
-            cnt += 1
-            if self.client_ip:
-                await websocket.send(
-                    json.dumps({"client_ip": self.client_ip})
+            ws_msg_dict: Dict[str, Optional[str]] = {"client_ip": self.client_ip}
+            if self.msg_recorder:
+                ws_msg_dict["received_msg_num"] = str(
+                    len(self.msg_recorder.received_msgs)
                 )
+            if self.client_ip:
+                await websocket.send(json.dumps(ws_msg_dict))
             await asyncio.sleep(0.1)
 
     async def release_camera(self):
@@ -81,13 +92,6 @@ class WebServer:
         self.app.route("/progress", methods=["POST"])(self.progress)
 
         self.app.route("/recordings/<filename>")(self.serve_recording)
-
-    def generate_output_filename(self):
-        # Generate a unique file name using the current timestamp
-        create_time = datetime.fromtimestamp(time.time(), tz=self.time_zone).strftime(
-            "%Y%m%d_%H%M%S"
-        )
-        return f"{self.recordings_dir}/{create_time}.mp4"
 
     async def gen_frames(self):
         while True:
@@ -136,12 +140,21 @@ class WebServer:
         if self.recording:
             print("Recording already started!")
             return redirect(url_for("index"))
+        self.record_start_time = time.time()
         self.recording = True
-        self.container = av.open(self.generate_output_filename(), mode="w")
+        time_str = datetime.fromtimestamp(
+            self.record_start_time, tz=self.time_zone
+        ).strftime("%Y%m%d_%H%M%S")
+        file_path = f"{self.recordings_dir}/{time_str}.mp4"
+        self.container = av.open(file_path, mode="w")
         self.stream = self.container.add_stream("h264", rate=24)
         self.stream.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.stream.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.stream.pix_fmt = "yuv420p"
+
+        if self.msg_recorder:
+            self.msg_recorder.start_receive()
+
         return redirect(url_for("index"))
 
     async def stop_recording(self):
@@ -154,6 +167,14 @@ class WebServer:
         for packet in self.stream.encode():
             self.container.mux(packet)
         self.container.close()
+
+        time_str = datetime.fromtimestamp(
+            self.record_start_time, tz=self.time_zone
+        ).strftime("%Y%m%d_%H%M%S")
+
+        if self.msg_recorder:
+            self.msg_recorder.stop_receive(data_file_name=time_str)
+
         return redirect(url_for("index"))
 
     async def limited_stream(self, path, range_header=None, chunk_size=1024 * 1024):
@@ -177,7 +198,18 @@ class WebServer:
 
     async def serve_recording(self, filename):
         range_header = request.headers.get("Range")
+        print(f"serve_recording: filename: {filename}, range_header: {range_header}")
         total_size = os.path.getsize(f"{self.recordings_dir}/{filename}")
+
+        if self.msg_recorder:
+            msg_file_name = filename
+            if msg_file_name.endswith(".mp4"):
+                msg_file_name = msg_file_name[:-4]
+            if self.msg_recorder.replaying_file_name != msg_file_name:
+                self.msg_recorder.stop_replay()
+                self.msg_recorder.start_replay(msg_file_name)
+            print("Finish loading msgs in msg_recorder")
+
         if range_header:
             start, end = parse_range_header(range_header, total_size)
             content_range_header = f"bytes {start}-{end}/{total_size}"
@@ -195,13 +227,22 @@ class WebServer:
 
     async def progress(self):
         data = await request.get_json()
-        current_time = time.monotonic() - self.start_time
-        client_time = data["client_timestamp"] - time.monotonic() + current_time
+
+        if self.msg_recorder:
+            video_filename = data["video_filename"]
+            if video_filename.endswith(".mp4"):
+                video_filename = video_filename[:-4]
+            if self.msg_recorder.replaying_file_name != video_filename:
+                self.msg_recorder.stop_replay()
+                self.msg_recorder.start_replay(video_filename)
+            self.msg_recorder.browser_global_timestamp = data["client_timestamp"]
+            self.msg_recorder.video_replay_timestamp = data["video_timestamp"]
+            self.msg_recorder.video_is_playing = data["is_playing"]
+            print(
+                f"{video_filename=}: {data['client_timestamp']:.3f}, {data['video_timestamp']:.3f}, {data['is_playing']}"
+            )
+
         self.client_ip = request.remote_addr
-        print(
-            f"Progress: current time: {current_time:.3f}, client time stamp: {client_time:.3f}, \
-client ip: {self.client_ip}, current video time: {data['time']:.3f} seconds, paused: {data['paused']}"
-        )
         return jsonify({"status": "success"})
 
     def run(self):
@@ -210,8 +251,13 @@ client ip: {self.client_ip}, current video time: {data['time']:.3f} seconds, pau
     def __del__(self):
         if self.cap.isOpened():
             self.cap.release()
+        if self.msg_recorder:
+            self.msg_recorder.stop_receive()
+            self.msg_recorder.stop_replay()
 
 
 if __name__ == "__main__":
-    server = WebServer()
+    recorder = MsgRecorder("172.24.95.226", 8800, "recordings/messages")
+    server = WebServer(msg_recorder=recorder)
+    # server = WebServer()
     server.run()
