@@ -1,5 +1,15 @@
 let reportInterval;
 
+const ws = new WebSocket('ws://' + window.location.host + '/ws');
+
+ws.onmessage = function (event) {
+    const data = JSON.parse(event.data);
+    document.getElementById('client_ip').textContent = data.client_ip;
+};
+ws.onopen = () => {
+    ws.send("Opened");
+}
+
 function updateVideoPlayer() {
     var selectedVideo = document.getElementById('videoList').value;
     var videoPlayer = document.getElementById('videoPlayer');
@@ -48,5 +58,6 @@ window.onload = function () {
     updateVideoPlayer(); // Set the initial video
 };
 window.onunload = function () {
+    ws.send("Closed");
     clearInterval(reportInterval);
 };

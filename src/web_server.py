@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 import cv2
 import av
@@ -11,6 +12,7 @@ from quart import (
     send_from_directory,
     request,
     jsonify,
+    websocket,
 )
 import os
 import pytz
@@ -40,11 +42,22 @@ class WebServer:
         self.time_zone = pytz.timezone(time_zone)
         self.start_time = time.monotonic()
         self.resolution = resolution
+        self.client_ip = ""
 
         self.app.before_serving(self.setup_camera)
         self.app.after_serving(self.release_camera)
 
-        # Also release camera after self.app shutdown
+        self.app.websocket("/ws")(self.ws)
+
+    async def ws(self):
+        cnt = 0
+        while True:
+            cnt += 1
+            if self.client_ip:
+                await websocket.send(
+                    json.dumps({"client_ip": self.client_ip})
+                )
+            await asyncio.sleep(0.1)
 
     async def release_camera(self):
         if self.cap.isOpened():
@@ -107,7 +120,10 @@ class WebServer:
         recording_files = os.listdir(self.recordings_dir)
         recording_files.sort(reverse=True)
         return await render_template(
-            "index.html", video_files=recording_files, recording=self.recording
+            "index.html",
+            video_files=recording_files,
+            recording=self.recording,
+            client_ip=self.client_ip,
         )
 
     def video_feed(self):
@@ -181,9 +197,10 @@ class WebServer:
         data = await request.get_json()
         current_time = time.monotonic() - self.start_time
         client_time = data["client_timestamp"] - time.monotonic() + current_time
+        self.client_ip = request.remote_addr
         print(
-            f"Progress: current time: {current_time:.3f}, client time stamp: {data['client_timestamp']:.3f}, \
-                current video time: {data['time']:.3f} seconds, paused: {data['paused']}"
+            f"Progress: current time: {current_time:.3f}, client time stamp: {client_time:.3f}, \
+client ip: {self.client_ip}, current video time: {data['time']:.3f} seconds, paused: {data['paused']}"
         )
         return jsonify({"status": "success"})
 
