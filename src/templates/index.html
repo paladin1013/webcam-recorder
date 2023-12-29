@@ -3,53 +3,21 @@
 
 <head>
     <title>Webcam and Video Stream</title>
-    <script>
-        function updateVideoPlayer() {
-            var selectedVideo = document.getElementById('videoList').value;
-            var videoPlayer = document.getElementById('videoPlayer');
-            var downloadLink = document.getElementById('downloadLink');
-            var videoURL = '/recordings/' + selectedVideo;
-            videoPlayer.src = videoURL;
-            videoPlayer.load();
-            downloadLink.href = videoURL;
-        }
-
-        function reportTime() {
-            var video = document.getElementById('videoPlayer');
-            var time = video.currentTime;
-
-            fetch('/progress', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ time: time }),
-            });
-        }
-
-        function setupVideo() {
-            var video = document.getElementById('videoPlayer');
-            if (video) {
-                video.ontimeupdate = reportTime;
-            }
-        }
-
-        window.onload = function () {
-            setupVideo();
-            updateVideoPlayer(); // Set the initial video
-        };
-    </script>
+    <script src="/static/js/report_video.js"> </script>
 </head>
 
 <body>
     <h1>Camera Stream</h1>
     <img src="{{ url_for('video_feed') }}" alt="Webcam Stream">
-    <form action="/start_recording" method="post">
-        <input type="submit" value="Start Recording">
-    </form>
+    {% if recording %}
     <form action="/stop_recording" method="post">
         <input type="submit" value="Stop Recording">
     </form>
+    {% else %}
+    <form action="/start_recording" method="post">
+        <input type="submit" value="Start Recording">
+    </form>
+    {% endif %}
 
     <h2>Select a Video</h2>
     <select id="videoList" onchange="updateVideoPlayer()">

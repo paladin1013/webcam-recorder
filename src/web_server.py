@@ -13,10 +13,12 @@ from quart import (
     jsonify,
 )
 import os
+import pytz
+from datetime import datetime
 
 
 class WebServer:
-    def __init__(self):
+    def __init__(self, time_zone="America/Los_Angeles"):
         self.app = Quart(__name__)
         self.setup_routes()
         self.cap = cv2.VideoCapture()
@@ -25,6 +27,8 @@ class WebServer:
         self.stream = None
         self.container = None
         self.recordings_dir = "./recordings/videos"
+        self.time_zone = pytz.timezone(time_zone)
+        self.start_time = time.monotonic()
 
     def setup_camera(self):
         self.cap.open(0)
@@ -43,8 +47,10 @@ class WebServer:
 
     def generate_output_filename(self):
         # Generate a unique file name using the current timestamp
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        return f"{self.recordings_dir}/{timestamp}.mp4"
+        create_time = datetime.fromtimestamp(time.time(), tz=self.time_zone).strftime(
+            "%Y%m%d_%H%M%S"
+        )
+        return f"{self.recordings_dir}/{create_time}.mp4"
 
     async def gen_frames(self):
         while True:
@@ -74,7 +80,9 @@ class WebServer:
         os.makedirs(self.recordings_dir, exist_ok=True)
         recording_files = os.listdir(self.recordings_dir)
         recording_files.sort(reverse=True)
-        return await render_template("index.html", video_files=recording_files)
+        return await render_template(
+            "index.html", video_files=recording_files, recording=self.recording
+        )
 
     def video_feed(self):
         return Response(
@@ -106,14 +114,35 @@ class WebServer:
         self.container.close()
         return redirect(url_for("index"))
 
+    async def limited_stream(self, path, chunk_size=1024 * 1024, delay=0.1):
+        """
+        Stream a file with limited bandwidth.
+
+        :param path: File path
+        :param chunk_size: Size of each chunk in bytes
+        :param delay: Delay between chunks in seconds
+        """
+        with open(path, "rb") as file:
+            while True:
+                chunk = file.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+                await asyncio.sleep(delay)
+
     async def serve_recording(self, filename):
-        return await send_from_directory(
-            directory=self.recordings_dir, file_name=filename
+        return Response(
+            self.limited_stream(f"{self.recordings_dir}/{filename}"),
+            content_type="video/mp4",
         )
 
     async def progress(self):
         data = await request.get_json()
-        print(f"Current video time: {data['time']} seconds")
+        current_time = time.monotonic() - self.start_time
+        print(
+            f"Progress: current time: {current_time:.3f}, client time stamp: {data['client_timestamp']/1000:.3f}, \
+                current video time: {data['time']:.3f} seconds, paused: {data['paused']}"
+        )
         return jsonify({"status": "success"})
 
     def run(self):
