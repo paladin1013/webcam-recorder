@@ -18,22 +18,35 @@ from datetime import datetime
 
 
 class WebServer:
-    def __init__(self, time_zone="America/Los_Angeles"):
+    def __init__(self, time_zone="America/Los_Angeles", resolution=(640, 480)):
         self.app = Quart(__name__)
         self.setup_routes()
         self.cap = cv2.VideoCapture()
-        self.setup_camera()
         self.recording = False
         self.stream = None
         self.container = None
         self.recordings_dir = "./recordings/videos"
         self.time_zone = pytz.timezone(time_zone)
         self.start_time = time.monotonic()
+        self.resolution = resolution
+
+        self.app.before_serving(self.setup_camera)
+        self.app.after_serving(self.release_camera)
+
+        # Also release camera after self.app shutdown
+
+    async def release_camera(self):
+        if self.cap.isOpened():
+            self.cap.release()
+        print("Camera released")
 
     def setup_camera(self):
-        self.cap.open(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        if not self.cap.isOpened():
+            self.cap.open(0)
+
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+        print(f"Camera initialized with resolution {self.resolution}")
 
     def setup_routes(self):
         self.app.route("/")(self.index)
@@ -56,7 +69,7 @@ class WebServer:
         while True:
             success, frame = self.cap.read()
             if not success:
-                break
+                await asyncio.sleep(0.1)
             else:
                 start_time = time.monotonic()
                 if self.recording:
@@ -71,9 +84,11 @@ class WebServer:
                 #     f"Recording: {self.recording}, single frame fps: {1/(time.monotonic() - start_time):.1f}",
                 #     end="\r",
                 # )
+
                 yield (
                     b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
+
             await asyncio.sleep(0)
 
     async def index(self):
@@ -139,14 +154,19 @@ class WebServer:
     async def progress(self):
         data = await request.get_json()
         current_time = time.monotonic() - self.start_time
+        client_time = data["client_timestamp"] - time.monotonic() + current_time
         print(
-            f"Progress: current time: {current_time:.3f}, client time stamp: {data['client_timestamp']/1000:.3f}, \
+            f"Progress: current time: {current_time:.3f}, client time stamp: {data['client_timestamp']:.3f}, \
                 current video time: {data['time']:.3f} seconds, paused: {data['paused']}"
         )
         return jsonify({"status": "success"})
 
     def run(self):
-        self.app.run(host="0.0.0.0", port=5000)
+        self.app.run(host="0.0.0.0", port=5000, use_reloader=False)
+
+    def __del__(self):
+        if self.cap.isOpened():
+            self.cap.release()
 
 
 if __name__ == "__main__":

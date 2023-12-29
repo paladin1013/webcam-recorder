@@ -14,7 +14,7 @@ function reportTime() {
     var video = document.getElementById('videoPlayer');
     var time = video.currentTime;
     // Get the current timestamp of the web client and convert to seconds (float)
-    var client_timestamp = new Date().getTime();
+    var client_timestamp = new Date().getTime() / 1000;
 
     fetch('/progress', {
         method: 'POST',
@@ -26,7 +26,7 @@ function reportTime() {
         body: JSON.stringify({
             'time': time,
             'paused': video.paused,
-            'client_timestamp': client_timestamp / 1000,
+            'client_timestamp': client_timestamp,
         }),
     });
 }
@@ -34,7 +34,7 @@ function reportTime() {
 function setupVideo() {
     var video = document.getElementById('videoPlayer');
     if (video) {
-        video.ontimeupdate = reportTime;
+        // video.ontimeupdate = reportTime;
         if (reportInterval) {
             clearInterval(reportInterval);
         }
