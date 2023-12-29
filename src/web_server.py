@@ -17,6 +17,17 @@ import pytz
 from datetime import datetime
 
 
+def parse_range_header(header, total_size):
+    # Parse the range header to get start and end byte positions
+    range_type, range_spec = header.split("=")
+    if range_type != "bytes":
+        raise ValueError("Invalid range type")
+    start, end = range_spec.split("-")
+    start = int(start) if start else 0
+    end = int(end) if end else total_size - 1
+    return start, end
+
+
 class WebServer:
     def __init__(self, time_zone="America/Los_Angeles", resolution=(640, 480)):
         self.app = Quart(__name__)
@@ -129,27 +140,42 @@ class WebServer:
         self.container.close()
         return redirect(url_for("index"))
 
-    async def limited_stream(self, path, chunk_size=1024 * 1024, delay=0.1):
-        """
-        Stream a file with limited bandwidth.
+    async def limited_stream(self, path, range_header=None, chunk_size=1024 * 1024):
+        start, end = 0, None
+        total_size = os.path.getsize(path)
 
-        :param path: File path
-        :param chunk_size: Size of each chunk in bytes
-        :param delay: Delay between chunks in seconds
-        """
+        if range_header:
+            start, end = parse_range_header(range_header, total_size)
+            if end is None:
+                end = total_size - 1
+
         with open(path, "rb") as file:
-            while True:
-                chunk = file.read(chunk_size)
+            file.seek(start)
+            remaining = end - start + 1
+            while remaining > 0:
+                chunk = file.read(min(chunk_size, remaining))
                 if not chunk:
                     break
                 yield chunk
-                await asyncio.sleep(delay)
+                remaining -= len(chunk)
 
     async def serve_recording(self, filename):
-        return Response(
-            self.limited_stream(f"{self.recordings_dir}/{filename}"),
-            content_type="video/mp4",
-        )
+        range_header = request.headers.get("Range")
+        total_size = os.path.getsize(f"{self.recordings_dir}/{filename}")
+        if range_header:
+            start, end = parse_range_header(range_header, total_size)
+            content_range_header = f"bytes {start}-{end}/{total_size}"
+            return Response(
+                self.limited_stream(f"{self.recordings_dir}/{filename}", range_header),
+                status=206,  # Partial Content
+                content_type="video/mp4",
+                headers={"Content-Range": content_range_header},
+            )
+        else:
+            return Response(
+                self.limited_stream(f"{self.recordings_dir}/{filename}"),
+                content_type="video/mp4",
+            )
 
     async def progress(self):
         data = await request.get_json()
