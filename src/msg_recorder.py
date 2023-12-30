@@ -161,11 +161,15 @@ class MsgRecorder:
     def start_replay(self, file_name: str):
         if file_name.endswith(".pkl"):
             file_name = file_name[:-4]
-
+        if not os.path.exists(f"{self.data_dir}/{file_name}.pkl"):
+            print(f"{self.data_dir}/{file_name}.pkl does not exist.")
+            return
         self.load_msgs(file_name)
         if len(self.replay_msgs) == 0:
             print("No message loaded, failed to start replaying.")
             return
+        # Check whether file_name existed
+
         self.replaying_file_name = file_name
         if (
             self.replaying_task is None
@@ -188,6 +192,14 @@ class MsgRecorder:
             self.pub_socket.close()
         self.replay_msgs = []
         self.replaying_file_name = ""
+        
+    def find_replay_file(self, file_name: str):
+        if file_name.endswith(".pkl"):
+            file_name = file_name[:-4]
+        if os.path.exists(f"{self.data_dir}/{file_name}.pkl"):
+            return True
+        else:
+            return False
 
     def save_msgs(self, file_name: str, enable_append: bool = False):
         if file_name == "":

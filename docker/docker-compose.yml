@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  camera-recorder:
+    build:
+      context: ./
+    container_name: camera-recorder
+    volumes:
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
+      - /dev/video0:/dev/video0
+      - ./..:/home/recorder/webcam-recorder
+      - ~/.zsh_history:/home/recorder/.zsh_history
+    ports:
+      - "5000:5000"
+      - "8800:8800"
+    environment:
+      - DISPLAY=:0
+    devices:
+      - "/dev/video0:/dev/video0"
+    working_dir: /home/recorder/webcam-recorder

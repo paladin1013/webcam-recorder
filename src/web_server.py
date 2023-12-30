@@ -64,20 +64,25 @@ class WebServer:
         while True:
             ws_started_time = time.monotonic()
             ws_msg_dict: Dict[str, Optional[str]] = {"client_ip": self.client_ip}
+            if self.is_recording:
+                recording_time = time.time() - self.record_start_time
+                # Transform recording_time to MM:SS
+                ws_msg_dict["recording_time"] = time.strftime(
+                    "%M:%S", time.gmtime(recording_time)
+                )
+            else:
+                ws_msg_dict["recording_time"] = "00:00"
+
             if self.msg_recorder:
                 ws_msg_dict["received_msg_num"] = str(
                     len(self.msg_recorder.received_msgs)
                 )
-                if self.is_recording:
-                    recording_time = time.time() - self.record_start_time
-                    # Transform recording_time to MM:SS
-                    ws_msg_dict["recording_time"] = time.strftime(
-                        "%M:%S", time.gmtime(recording_time)
-                    )
-                else:
-                    ws_msg_dict["recording_time"] = "00:00"
                 ws_msg_dict["loaded_msg_num"] = str(len(self.msg_recorder.replay_msgs))
                 ws_msg_dict["replaying_msg_idx"] = str(self.msg_recorder.replaying_idx)
+            else:
+                ws_msg_dict["received_msg_num"] = str(0)
+                ws_msg_dict["loaded_msg_num"] = str(0)
+                ws_msg_dict["replaying_msg_idx"] = str(0)
             if self.client_ip:
                 await websocket.send(json.dumps(ws_msg_dict))
             await asyncio.sleep(0.1)
@@ -159,7 +164,9 @@ class WebServer:
         ).strftime("%Y%m%d_%H%M%S")
         file_path = f"{self.is_recordings_dir}/{time_str}.mp4"
         self.container = av.open(file_path, mode="w")
-        self.stream = self.container.add_stream("h264", rate=24)
+        self.stream = self.container.add_stream(
+            "h264", rate=self.cap.get(cv2.CAP_PROP_FPS)
+        )
         self.stream.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.stream.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.stream.pix_fmt = "yuv420p"
@@ -200,6 +207,9 @@ class WebServer:
 
         with open(path, "rb") as file:
             file.seek(start)
+            if end is None:
+                end = total_size - 1
+
             remaining = end - start + 1
             while remaining > 0:
                 chunk = file.read(min(chunk_size, remaining))
@@ -218,9 +228,10 @@ class WebServer:
             if msg_file_name.endswith(".mp4"):
                 msg_file_name = msg_file_name[:-4]
             if self.msg_recorder.replaying_file_name != msg_file_name:
-                self.msg_recorder.stop_replay()
-                self.msg_recorder.start_replay(msg_file_name)
-                print("Finish loading msgs in msg_recorder")
+                if self.msg_recorder.replaying_file_name != "":
+                    self.msg_recorder.stop_replay()
+                if self.msg_recorder.find_replay_file(msg_file_name):
+                    self.msg_recorder.start_replay(msg_file_name)
 
         if range_header:
             start, end = parse_range_header(range_header, total_size)
@@ -244,12 +255,15 @@ class WebServer:
         data = await request.get_json()
 
         if self.msg_recorder:
-            video_filename = data["video_filename"]
-            if video_filename.endswith(".mp4"):
-                video_filename = video_filename[:-4]
-            if self.msg_recorder.replaying_file_name != video_filename:
-                self.msg_recorder.stop_replay()
-                self.msg_recorder.start_replay(video_filename)
+            msg_file_name = data["video_filename"]
+            if msg_file_name.endswith(".mp4"):
+                msg_file_name = msg_file_name[:-4]
+
+            if self.msg_recorder.replaying_file_name != msg_file_name:
+                if self.msg_recorder.replaying_file_name != "":
+                    self.msg_recorder.stop_replay()
+                if self.msg_recorder.find_replay_file(msg_file_name):
+                    self.msg_recorder.start_replay(msg_file_name)
             self.msg_recorder.update_local_time = time.monotonic()
             self.msg_recorder.browser_global_timestamp = data["client_timestamp"]
             self.msg_recorder.video_replay_timestamp = data["video_timestamp"]

@@ -55,7 +55,7 @@ function setupVideo() {
         if (reportInterval) {
             clearInterval(reportInterval);
         }
-        reportInterval = setInterval(reportTime, 100); // Report every 100ms
+        reportInterval = setInterval(reportTime, 500); // Report every 200ms
     }
 }
 
