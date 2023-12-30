@@ -8,6 +8,8 @@ import numpy as np
 import zmq.asyncio
 import pytz
 
+import logging
+
 
 class MsgRecorder:
     def __init__(
@@ -34,8 +36,10 @@ class MsgRecorder:
         self.replay_msgs: List[Tuple[float, bytes]] = []
         self.replaying_task: Optional[asyncio.Task] = None
         self.replaying_file_name = ""
+        self.replaying_idx = 0
 
         # To be updated during the video replaying. These values should be updated simultaneously.
+        self.update_local_time = time.monotonic()
         self.browser_global_timestamp = time.time()
         """The most recent global timestamp provided by the browser."""
         self.video_replay_timestamp = 0
@@ -66,12 +70,17 @@ class MsgRecorder:
     def start_receive(self):
         self.receive_start_time_global = time.time()
         self.received_msgs = []
-        if self.receiving_task is None or self.receiving_task.done():
+        if (
+            self.receiving_task is None
+            or self.receiving_task.done()
+            or self.receiving_task.cancelled()
+        ):
             self.receiving_task = asyncio.create_task(self.run_receive())
 
     def stop_receive(self, data_file_name: str = ""):
         if self.receiving_task is not None:
             self.receiving_task.cancel()
+            self.receiving_task = None
         if self.sub_socket is not None and not self.sub_socket.closed:
             self.sub_socket.close()
         if self.received_msgs:
@@ -90,76 +99,91 @@ class MsgRecorder:
 
         prev_browser_time = self.browser_global_timestamp
         prev_video_time = self.video_replay_timestamp
-        prev_sent_index = -1
+        prev_end_idx = int(np.searchsorted(recorded_timestamps, prev_video_time))
         cursor_jumped = False
         while True:
-            # current_video_time = (
-            #     time.time()
-            #     - self.browser_global_timestamp
-            #     + self.video_replay_timestamp
-            # )
-            current_video_time = self.video_replay_timestamp
+            current_video_time = (
+                self.video_replay_timestamp + time.monotonic() - self.update_local_time
+            )
 
             # Decide whether cursor is jumped either forward or backward
             browser_elapsed_time = self.browser_global_timestamp - prev_browser_time
             video_elapsed_time = self.video_replay_timestamp - prev_video_time
 
             elapsed_time_diff = browser_elapsed_time - video_elapsed_time
-            if abs(elapsed_time_diff) > 0.1 and current_video_time > 0.1:
+            if abs(elapsed_time_diff) > 0.2:
                 cursor_jumped = True
                 print(
                     f"Cursor jumped from {prev_video_time:.3f} to {current_video_time:.3f}"
                 )
+            else:
+                cursor_jumped = False
 
             prev_browser_time = self.browser_global_timestamp
             prev_video_time = self.video_replay_timestamp
             current_idx = int(np.searchsorted(recorded_timestamps, current_video_time))
             if self.video_is_playing:
                 print(
-                    f"{self.video_replay_timestamp=:.3f}, {self.browser_global_timestamp=:.3f}, {current_video_time=:.3f}, {current_idx=}, {prev_sent_index=}"
+                    f"msg_recorder: video replay {self.video_replay_timestamp:.3f}, {current_video_time=:.3f}, {current_idx=}, {prev_end_idx=}"
                 )
                 if cursor_jumped:
-                    backtrack_idx = int(
+                    prev_end_idx = int(
                         np.searchsorted(
                             recorded_timestamps,
                             max(0, current_video_time - self.replay_backtrack_time),
                         )
                     )
-                    for i in range(backtrack_idx, current_idx):
-                        await self.pub_socket.send(self.replay_msgs[i][1])
 
-                else:
-                    if current_idx < prev_sent_index:
-                        print(
-                            "Warning: cursor jumped back in time but cursor_jumped is False. Will not send any messages."
+                if current_idx < prev_end_idx:
+                    print(
+                        "Warning: cursor jumped back in time but cursor_jumped is False. Will not send any messages."
+                    )
+                    await asyncio.sleep(0.01)
+
+                    continue
+
+                # Send all messages between prev_end_idx and current_idx
+                for i in range(prev_end_idx, current_idx):
+                    await self.pub_socket.send(self.replay_msgs[i][1])
+
+                prev_end_idx = current_idx
+            else:  # Video is not playing
+                if cursor_jumped:
+                    prev_end_idx = int(
+                        np.searchsorted(
+                            recorded_timestamps,
+                            max(0, current_video_time - self.replay_backtrack_time),
                         )
-                        await asyncio.sleep(0.001)
-
-                        continue
-
-                    # Send all messages between prev_sent_index and current_idx
-                    for i in range(prev_sent_index + 1, current_idx):
-                        await self.pub_socket.send(self.replay_msgs[i][1])
-
-                prev_sent_index = current_idx - 1
-
-            await asyncio.sleep(0.001)
+                    )
+            self.replaying_idx = prev_end_idx
+            await asyncio.sleep(0.01)
 
     def start_replay(self, file_name: str):
         if file_name.endswith(".pkl"):
             file_name = file_name[:-4]
-        self.replaying_file_name = file_name
 
         self.load_msgs(file_name)
         if len(self.replay_msgs) == 0:
             print("No message loaded, failed to start replaying.")
             return
-        if self.replaying_task is None or self.replaying_task.done():
+        self.replaying_file_name = file_name
+        if (
+            self.replaying_task is None
+            or self.replaying_task.done()
+            or self.replaying_task.cancelled()
+        ):
             self.replaying_task = asyncio.create_task(self.run_replay())
+            print(f"self.replaying_task created")
+        else:
+            print(f"self.replaying_task already exists")
 
     def stop_replay(self):
         if self.replaying_task is not None:
             self.replaying_task.cancel()
+            self.replaying_task = None
+
+        else:
+            print(f"self.replaying_task is None")
         if self.pub_socket is not None and not self.pub_socket.closed:
             self.pub_socket.close()
         self.replay_msgs = []

@@ -6,6 +6,9 @@ ws.onmessage = function (event) {
     const data = JSON.parse(event.data);
     document.getElementById('client_ip').textContent = data.client_ip;
     document.getElementById('received_msg_num').textContent = data.received_msg_num;
+    document.getElementById('recording_time').textContent = data.recording_time;
+    // document.getElementById('loaded_msg_num').textContent = data.loaded_msg_num;
+    // document.getElementById('replaying_msg_idx').textContent = data.replaying_msg_idx;
 };
 ws.onopen = () => {
     ws.send("Opened");

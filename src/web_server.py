@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from typing import Dict, Optional
 import cv2
@@ -43,10 +44,10 @@ class WebServer:
         self.app = Quart(__name__)
         self.setup_routes()
         self.cap = cv2.VideoCapture()
-        self.recording = False
+        self.is_recording = False
         self.stream = None
         self.container = None
-        self.recordings_dir = "./recordings/videos"
+        self.is_recordings_dir = "./recordings/videos"
         self.time_zone = pytz.timezone(time_zone)
         self.record_start_time = time.time()
         self.replay_start_time = time.time()
@@ -61,11 +62,22 @@ class WebServer:
 
     async def ws(self):
         while True:
+            ws_started_time = time.monotonic()
             ws_msg_dict: Dict[str, Optional[str]] = {"client_ip": self.client_ip}
             if self.msg_recorder:
                 ws_msg_dict["received_msg_num"] = str(
                     len(self.msg_recorder.received_msgs)
                 )
+                if self.is_recording:
+                    recording_time = time.time() - self.record_start_time
+                    # Transform recording_time to MM:SS
+                    ws_msg_dict["recording_time"] = time.strftime(
+                        "%M:%S", time.gmtime(recording_time)
+                    )
+                else:
+                    ws_msg_dict["recording_time"] = "00:00"
+                ws_msg_dict["loaded_msg_num"] = str(len(self.msg_recorder.replay_msgs))
+                ws_msg_dict["replaying_msg_idx"] = str(self.msg_recorder.replaying_idx)
             if self.client_ip:
                 await websocket.send(json.dumps(ws_msg_dict))
             await asyncio.sleep(0.1)
@@ -100,7 +112,7 @@ class WebServer:
                 await asyncio.sleep(0.1)
             else:
                 start_time = time.monotonic()
-                if self.recording:
+                if self.is_recording:
                     img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     img = av.VideoFrame.from_ndarray(img, format="rgb24")
                     for packet in self.stream.encode(img):
@@ -109,7 +121,7 @@ class WebServer:
                 ret, buffer = cv2.imencode(".jpg", frame)
                 frame = buffer.tobytes()
                 # print(
-                #     f"Recording: {self.recording}, single frame fps: {1/(time.monotonic() - start_time):.1f}",
+                #     f"Recording: {self.is_recording}, single frame fps: {1/(time.monotonic() - start_time):.1f}",
                 #     end="\r",
                 # )
 
@@ -120,13 +132,13 @@ class WebServer:
             await asyncio.sleep(0)
 
     async def index(self):
-        os.makedirs(self.recordings_dir, exist_ok=True)
-        recording_files = os.listdir(self.recordings_dir)
+        os.makedirs(self.is_recordings_dir, exist_ok=True)
+        recording_files = os.listdir(self.is_recordings_dir)
         recording_files.sort(reverse=True)
         return await render_template(
             "index.html",
             video_files=recording_files,
-            recording=self.recording,
+            recording=self.is_recording,
             client_ip=self.client_ip,
         )
 
@@ -137,15 +149,15 @@ class WebServer:
 
     async def start_recording(self):
         print("Enter start_recording")
-        if self.recording:
+        if self.is_recording:
             print("Recording already started!")
             return redirect(url_for("index"))
         self.record_start_time = time.time()
-        self.recording = True
+        self.is_recording = True
         time_str = datetime.fromtimestamp(
             self.record_start_time, tz=self.time_zone
         ).strftime("%Y%m%d_%H%M%S")
-        file_path = f"{self.recordings_dir}/{time_str}.mp4"
+        file_path = f"{self.is_recordings_dir}/{time_str}.mp4"
         self.container = av.open(file_path, mode="w")
         self.stream = self.container.add_stream("h264", rate=24)
         self.stream.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -158,11 +170,11 @@ class WebServer:
         return redirect(url_for("index"))
 
     async def stop_recording(self):
-        if not self.recording:
+        if not self.is_recording:
             print("Recording has not started!")
             return redirect(url_for("index"))
 
-        self.recording = False
+        self.is_recording = False
         time.sleep(0.1)
         for packet in self.stream.encode():
             self.container.mux(packet)
@@ -199,7 +211,7 @@ class WebServer:
     async def serve_recording(self, filename):
         range_header = request.headers.get("Range")
         print(f"serve_recording: filename: {filename}, range_header: {range_header}")
-        total_size = os.path.getsize(f"{self.recordings_dir}/{filename}")
+        total_size = os.path.getsize(f"{self.is_recordings_dir}/{filename}")
 
         if self.msg_recorder:
             msg_file_name = filename
@@ -208,24 +220,27 @@ class WebServer:
             if self.msg_recorder.replaying_file_name != msg_file_name:
                 self.msg_recorder.stop_replay()
                 self.msg_recorder.start_replay(msg_file_name)
-            print("Finish loading msgs in msg_recorder")
+                print("Finish loading msgs in msg_recorder")
 
         if range_header:
             start, end = parse_range_header(range_header, total_size)
             content_range_header = f"bytes {start}-{end}/{total_size}"
             return Response(
-                self.limited_stream(f"{self.recordings_dir}/{filename}", range_header),
+                self.limited_stream(
+                    f"{self.is_recordings_dir}/{filename}", range_header
+                ),
                 status=206,  # Partial Content
                 content_type="video/mp4",
                 headers={"Content-Range": content_range_header},
             )
         else:
             return Response(
-                self.limited_stream(f"{self.recordings_dir}/{filename}"),
+                self.limited_stream(f"{self.is_recordings_dir}/{filename}"),
                 content_type="video/mp4",
             )
 
     async def progress(self):
+        logging.getLogger("hypercorn.access").setLevel(logging.WARNING)
         data = await request.get_json()
 
         if self.msg_recorder:
@@ -235,11 +250,12 @@ class WebServer:
             if self.msg_recorder.replaying_file_name != video_filename:
                 self.msg_recorder.stop_replay()
                 self.msg_recorder.start_replay(video_filename)
+            self.msg_recorder.update_local_time = time.monotonic()
             self.msg_recorder.browser_global_timestamp = data["client_timestamp"]
             self.msg_recorder.video_replay_timestamp = data["video_timestamp"]
             self.msg_recorder.video_is_playing = data["is_playing"]
             print(
-                f"{video_filename=}: {data['client_timestamp']:.3f}, {data['video_timestamp']:.3f}, {data['is_playing']}"
+                f"{data['client_timestamp']:.3f}, {data['video_timestamp']:.3f}, {data['is_playing']}"
             )
 
         self.client_ip = request.remote_addr
@@ -260,4 +276,5 @@ if __name__ == "__main__":
     recorder = MsgRecorder("172.24.95.226", 8800, "recordings/messages")
     server = WebServer(msg_recorder=recorder)
     # server = WebServer()
+
     server.run()

@@ -18,6 +18,10 @@
         <input type="submit" value="Start Recording">
     </form>
     {% endif %}
+    <p>
+        Recording Time: <span id="recording_time"> 00:00 </span> Received Messages: <span id="received_msg_num"> 0
+        </span>
+    </p>
 
     <h2>Select a Video</h2>
     <select id="videoList" onchange="updateVideoPlayer()">
@@ -31,10 +35,11 @@
     <p>
         Connected Client IP: <span id="client_ip"> </span>
     </p>
+    <!-- <p>
+        Current Message Index/Total Messages: <span id="replaying_msg_idx"> 0 </span>/<span id="loaded_msg_num"> 0
+        </span>
+    </p> -->
 
-    <p>
-        Received Messages: <span id="received_msg_num"> 0 </span>
-    </p>
 
 
     <video id="videoPlayer" controls>
