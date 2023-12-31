@@ -56,13 +56,17 @@ USER root
 # For opencv
 RUN apt-get install -y sudo ffmpeg libsm6 libxext6
 RUN usermod -aG video ${USERNAME}
+RUN usermod -aG audio ${USERNAME}
 
 USER ${USERNAME}
 
 RUN code-server --install-extension ms-python.black-formatter
-RUN /home/${USERNAME}/miniforge3/bin/pip install opencv-stubs
-RUN /home/${USERNAME}/miniforge3/bin/mamba install -y av
-RUN /home/${USERNAME}/miniforge3/bin/pip install quart zmq pytz
+RUN /home/${USERNAME}/miniforge3/bin/pip install opencv-stubs quart zmq pytz
+RUN /home/${USERNAME}/miniforge3/bin/mamba install -y av python-sounddevice
+# For audio recording
+RUN /home/${USERNAME}/miniforge3/bin/pip install scipy moviepy \
+    # For code formatting
+    isort black
 
 SHELL ["/bin/zsh", "-ec"]
 CMD ["zsh"]

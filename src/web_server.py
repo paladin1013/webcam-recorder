@@ -1,25 +1,27 @@
 import asyncio
 import json
 import logging
+import os
 import time
+from datetime import datetime
 from typing import Dict, Optional
-import cv2
+
 import av
+import cv2
+import pytz
 from quart import (
     Quart,
     Response,
-    render_template,
-    redirect,
-    url_for,
-    send_from_directory,
-    request,
     jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
     websocket,
 )
-import os
-import pytz
-from datetime import datetime
 
+from audio_recorder import AudioRecorder
 from msg_recorder import MsgRecorder
 
 
@@ -40,6 +42,8 @@ class WebServer:
         time_zone="America/Los_Angeles",
         resolution=(640, 480),
         msg_recorder: Optional[MsgRecorder] = None,
+        audio_recorder: Optional[AudioRecorder] = None,
+        data_dir="./recordings/videos",
     ):
         self.app = Quart(__name__)
         self.setup_routes()
@@ -47,7 +51,7 @@ class WebServer:
         self.is_recording = False
         self.stream = None
         self.container = None
-        self.is_recordings_dir = "./recordings/videos"
+        self.data_dir = data_dir
         self.time_zone = pytz.timezone(time_zone)
         self.record_start_time = time.time()
         self.replay_start_time = time.time()
@@ -59,6 +63,7 @@ class WebServer:
 
         self.app.websocket("/ws")(self.ws)
         self.msg_recorder = msg_recorder
+        self.audio_recorder = audio_recorder
 
     async def ws(self):
         while True:
@@ -137,8 +142,8 @@ class WebServer:
             await asyncio.sleep(0)
 
     async def index(self):
-        os.makedirs(self.is_recordings_dir, exist_ok=True)
-        recording_files = os.listdir(self.is_recordings_dir)
+        os.makedirs(self.data_dir, exist_ok=True)
+        recording_files = os.listdir(self.data_dir)
         recording_files.sort(reverse=True)
         return await render_template(
             "index.html",
@@ -162,7 +167,7 @@ class WebServer:
         time_str = datetime.fromtimestamp(
             self.record_start_time, tz=self.time_zone
         ).strftime("%Y%m%d_%H%M%S")
-        file_path = f"{self.is_recordings_dir}/{time_str}.mp4"
+        file_path = f"{self.data_dir}/{time_str}.mp4"
         self.container = av.open(file_path, mode="w")
         self.stream = self.container.add_stream(
             "h264", rate=self.cap.get(cv2.CAP_PROP_FPS)
@@ -173,6 +178,9 @@ class WebServer:
 
         if self.msg_recorder:
             self.msg_recorder.start_receive()
+
+        if self.audio_recorder:
+            self.audio_recorder.start_recording(time_str)
 
         return redirect(url_for("index"))
 
@@ -193,6 +201,10 @@ class WebServer:
 
         if self.msg_recorder:
             self.msg_recorder.stop_receive(data_file_name=time_str)
+
+        if self.audio_recorder:
+            self.audio_recorder.stop_recording()
+            self.audio_recorder.merge_to_video(self.data_dir)
 
         return redirect(url_for("index"))
 
@@ -221,7 +233,7 @@ class WebServer:
     async def serve_recording(self, filename):
         range_header = request.headers.get("Range")
         print(f"serve_recording: filename: {filename}, range_header: {range_header}")
-        total_size = os.path.getsize(f"{self.is_recordings_dir}/{filename}")
+        total_size = os.path.getsize(f"{self.data_dir}/{filename}")
 
         if self.msg_recorder:
             msg_file_name = filename
@@ -237,16 +249,14 @@ class WebServer:
             start, end = parse_range_header(range_header, total_size)
             content_range_header = f"bytes {start}-{end}/{total_size}"
             return Response(
-                self.limited_stream(
-                    f"{self.is_recordings_dir}/{filename}", range_header
-                ),
+                self.limited_stream(f"{self.data_dir}/{filename}", range_header),
                 status=206,  # Partial Content
                 content_type="video/mp4",
                 headers={"Content-Range": content_range_header},
             )
         else:
             return Response(
-                self.limited_stream(f"{self.is_recordings_dir}/{filename}"),
+                self.limited_stream(f"{self.data_dir}/{filename}"),
                 content_type="video/mp4",
             )
 
@@ -287,8 +297,9 @@ class WebServer:
 
 
 if __name__ == "__main__":
-    recorder = MsgRecorder("172.24.95.226", 8800, "recordings/messages")
-    server = WebServer(msg_recorder=recorder)
+    msg_recorder = MsgRecorder("172.24.95.226", 8800, "recordings/messages")
+    audio_recorder = AudioRecorder(data_dir="recordings/audios")
+    server = WebServer(msg_recorder=msg_recorder, audio_recorder=audio_recorder)
     # server = WebServer()
 
     server.run()

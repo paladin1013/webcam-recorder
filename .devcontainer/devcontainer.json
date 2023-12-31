@@ -4,6 +4,7 @@
   "runArgs": [
     "--volume=/tmp/.X11-unix/:/tmp/.X11-unix/", // For GUI display
     "--device=/dev/video0:/dev/video0", // For camera
+    "--device=/dev/snd:/dev/snd", // For audio
     "-p=5000:5000", // For webcam streaming
     "-p=8800:8800", // For trajectory replay
   ],
