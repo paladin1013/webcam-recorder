@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 import pickle
 import time
 from datetime import datetime
@@ -16,7 +17,7 @@ class MsgRecorder:
         self,
         server_ip: str,
         server_port: int,
-        data_dir: str,
+        data_dir: str = str(Path(__file__).parent.parent) + "/recordings",
         save_msgs_interval: float = 1.0,
         time_zone: str = "America/Los_Angeles",
     ):
@@ -27,8 +28,9 @@ class MsgRecorder:
         self.sub_socket = None
 
         self.data_dir = data_dir
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
+        self.msg_dir = data_dir + "/messages"
+        if not os.path.exists(data_dir + "/messages"):
+            os.makedirs(data_dir + "/messages")
         self.save_msgs_interval = save_msgs_interval
         self.receive_start_time_global = time.time()
         self.received_msgs: List[Tuple[float, bytes]] = []
@@ -161,8 +163,8 @@ class MsgRecorder:
     def start_replay(self, file_name: str):
         if file_name.endswith(".pkl"):
             file_name = file_name[:-4]
-        if not os.path.exists(f"{self.data_dir}/{file_name}.pkl"):
-            print(f"{self.data_dir}/{file_name}.pkl does not exist.")
+        if not os.path.exists(f"{self.msg_dir}/{file_name}.pkl"):
+            print(f"{self.msg_dir}/{file_name}.pkl does not exist.")
             return
         self.load_msgs(file_name)
         if len(self.replay_msgs) == 0:
@@ -196,7 +198,7 @@ class MsgRecorder:
     def find_replay_file(self, file_name: str):
         if file_name.endswith(".pkl"):
             file_name = file_name[:-4]
-        if os.path.exists(f"{self.data_dir}/{file_name}.pkl"):
+        if os.path.exists(f"{self.msg_dir}/{file_name}.pkl"):
             return True
         else:
             return False
@@ -210,16 +212,16 @@ class MsgRecorder:
             file_name = file_name[:-4]
         if self.received_msgs:
             prev_msgs = []
-            if enable_append and os.path.exists(f"{self.data_dir}/{file_name}.pkl"):
-                with open(f"{self.data_dir}/{file_name}.pkl", "rb") as f:
+            if enable_append and os.path.exists(f"{self.msg_dir}/{file_name}.pkl"):
+                with open(f"{self.msg_dir}/{file_name}.pkl", "rb") as f:
                     prev_msgs = pickle.load(f)
                 print(
-                    f"Loaded {len(prev_msgs)} msgs from {self.data_dir}/{file_name}.pkl"
+                    f"Loaded {len(prev_msgs)} msgs from {self.msg_dir}/{file_name}.pkl"
                 )
-            with open(f"{self.data_dir}/{file_name}.pkl", "wb") as f:
+            with open(f"{self.msg_dir}/{file_name}.pkl", "wb") as f:
                 pickle.dump(prev_msgs + self.received_msgs, f)
             print(
-                f"Saved {len(prev_msgs + self.received_msgs)} msgs in {self.data_dir}/{file_name}.pkl"
+                f"Saved {len(prev_msgs + self.received_msgs)} msgs in {self.msg_dir}/{file_name}.pkl"
             )
 
             self.received_msgs = []
@@ -230,7 +232,7 @@ class MsgRecorder:
     def load_msgs(self, file_name: str):
         if file_name.endswith(".pkl"):
             file_name = file_name[:-4]
-        with open(f"{self.data_dir}/{file_name}.pkl", "rb") as f:
+        with open(f"{self.msg_dir}/{file_name}.pkl", "rb") as f:
             loaded_msgs = pickle.load(f)
             print(f"Loaded {len(loaded_msgs)} msgs")
         timestamps = np.array([t for t, _ in loaded_msgs])
