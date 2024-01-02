@@ -113,7 +113,7 @@ class MsgRecorder:
             video_elapsed_time = self.video_replay_timestamp - prev_video_time
 
             elapsed_time_diff = browser_elapsed_time - video_elapsed_time
-            if abs(elapsed_time_diff) > 0.2:
+            if abs(elapsed_time_diff) > 0.5 and abs(video_elapsed_time) > 0.5:
                 cursor_jumped = True
                 print(
                     f"Cursor jumped from {prev_video_time:.3f} to {current_video_time:.3f}"

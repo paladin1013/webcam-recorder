@@ -333,9 +333,9 @@ class WebServer:
 
 
 if __name__ == "__main__":
-    msg_recorder = MsgRecorder("172.24.95.226", 8800)
-    audio_recorder = AudioRecorder()
-    server = WebServer(msg_recorder=msg_recorder, audio_recorder=audio_recorder)
-    # server = WebServer()
+    msg_recorder = MsgRecorder("172.24.95.130", 8800)
+    # audio_recorder = AudioRecorder()
+    # server = WebServer(msg_recorder=msg_recorder, audio_recorder=audio_recorder)
 
+    server = WebServer(msg_recorder=msg_recorder)
     server.run()

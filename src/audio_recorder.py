@@ -105,20 +105,20 @@ class AudioRecorder:
             else:
                 time.sleep(0.1)
 
-        with open(f"{self.meta_data_dir}/{self.file_name}_video.json", "r") as f:
-            video_meta_data = json.load(f)
-        with open(f"{self.meta_data_dir}/{self.file_name}_audio.json", "r") as f:
-            audio_meta_data = json.load(f)
+        # with open(f"{self.meta_data_dir}/{self.file_name}_video.json", "r") as f:
+        #     video_meta_data = json.load(f)
+        # with open(f"{self.meta_data_dir}/{self.file_name}_audio.json", "r") as f:
+        #     audio_meta_data = json.load(f)
 
-        # Audio recording starts earlier than video
-        start_time_diff = video_meta_data["start_time"] - audio_meta_data["start_time"]
+        # # Audio recording starts earlier than video
+        # start_time_diff = video_meta_data["start_time"] - audio_meta_data["start_time"]
 
-        final_start_time = max(
-            video_meta_data["start_time"], audio_meta_data["start_time"]
-        )
-        final_stop_time = min(
-            video_meta_data["stop_time"], audio_meta_data["stop_time"]
-        )
+        # final_start_time = max(
+        #     video_meta_data["start_time"], audio_meta_data["start_time"]
+        # )
+        # final_stop_time = min(
+        #     video_meta_data["stop_time"], audio_meta_data["stop_time"]
+        # )
         # Crop video clip and audio clip according to the start and stop time
         video_clip = VideoFileClip(f"{raw_video_dir}/{self.file_name}.mp4")
         # video_clip: VideoFileClip = video_clip.subclip(
@@ -126,10 +126,10 @@ class AudioRecorder:
         #     final_stop_time - video_meta_data["start_time"],
         # )
         audio_clip = AudioFileClip(f"{self.audio_dir}/{self.file_name}.wav")
-        audio_clip = audio_clip.subclip(
-            final_start_time - audio_meta_data["start_time"],
-            final_stop_time - audio_meta_data["start_time"],
-        )
+        # audio_clip = audio_clip.subclip(
+        #     final_start_time - audio_meta_data["start_time"],
+        #     final_stop_time - audio_meta_data["start_time"],
+        # )
 
         final_clip: VideoFileClip = video_clip.set_audio(audio_clip)
         final_clip.write_videofile(f"{video_dir}/{self.file_name}.mp4")
