@@ -1,6 +1,14 @@
 {
   "name": "camera-recorder",
-  "dockerFile": "${localWorkspaceFolder}/docker/Dockerfile",
+  // "initializeCommand": "${localWorkspaceFolder}/.devcontainer/export_envs.sh",
+  "build": {
+    "dockerfile": "${localWorkspaceFolder}/docker/Dockerfile",
+    // "envFile": "${localWorkspaceFolder}/.devcontainer/devcontainer.env",
+    "args": {
+      "USER_UID": "1011",
+      "USER_GID": "1012",
+    },
+  },
   "runArgs": [
     "--volume=/tmp/.X11-unix/:/tmp/.X11-unix/", // For GUI display
     "--device=/dev/video0:/dev/video0", // For camera

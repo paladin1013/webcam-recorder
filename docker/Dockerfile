@@ -4,17 +4,18 @@ RUN apt-get update &&\
     apt-get install git -y
 
 
-
 ARG USERNAME=recorder
+# USER_UID and USER_GID should be overwritten by --build-arg or in devcontainer.json
+# if the mounted volume is not owned by 1000:1000
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 # Add the new user with sudo access
 # TODO: this should be removed when published
-RUN useradd -m ${USERNAME} -p "$(openssl passwd -1 123)"
+RUN echo "building image with USERNAME: ${USERNAME}, USER_UID: ${USER_UID}, USER_GID: ${USER_GID}"
+RUN groupadd -g ${USER_GID} ${USERNAME} && \
+    useradd ${USERNAME} -u ${USER_UID} -g ${USER_GID} -m  -p "$(openssl passwd -1 123)"
 RUN usermod -aG sudo ${USERNAME}
-# Give ownership of the user's home directory to the new user
-
 
 # Personal ubuntu configurations
 RUN apt-get install -y x11-apps
