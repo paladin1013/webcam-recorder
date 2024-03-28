@@ -41,7 +41,7 @@ class WebServer:
     def __init__(
         self,
         time_zone="America/Los_Angeles",
-        resolution=(640, 480),
+        resolution=(1440, 720),
         msg_recorder: Optional[MsgRecorder] = None,
         audio_recorder: Optional[AudioRecorder] = None,
         data_dir=str(Path(__file__).parent.parent) + "/recordings",

@@ -2,11 +2,12 @@
   "name": "camera-recorder",
   // "initializeCommand": "${localWorkspaceFolder}/.devcontainer/export_envs.sh",
   "build": {
-    "dockerfile": "${localWorkspaceFolder}/docker/Dockerfile",
+    // "dockerfile": "${localWorkspaceFolder}/docker/Dockerfile",
+    "dockerfile": "${localWorkspaceFolder}/docker/jetson/Dockerfile",
     // "envFile": "${localWorkspaceFolder}/.devcontainer/devcontainer.env",
     "args": {
-      "USER_UID": "1011",
-      "USER_GID": "1012",
+      "USER_UID": "1000",
+      "USER_GID": "1000",
     },
   },
   "runArgs": [
